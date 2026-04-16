@@ -25,12 +25,13 @@ async def lifespan(_app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 
 # Configure CORS middleware
+_settings = get_settings()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure appropriately for production
-    allow_methods=["GET", "DELETE"],  # Allow GET for API endpoints and DELETE for cache management
+    allow_origins=_settings.allowed_origins_list(),
+    allow_methods=["GET", "DELETE"],
     allow_headers=["*"],
-    allow_credentials=False,  # Set to True if you need to support credentials
+    allow_credentials=False,
 )
 
 # Implements HTTP conditional requests for CDN-safe SVG caching
