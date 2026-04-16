@@ -1,4 +1,5 @@
 # theme_gallery.py — Resolves #198
+import base64
 import streamlit as st
 
 
@@ -224,8 +225,9 @@ def render_theme_gallery(all_themes: dict, current_theme: str) -> str | None:
             card_class = "theme-card-wrap theme-card-active" if is_active else "theme-card-wrap theme-card-inactive"
 
             with col:
+                svg_b64 = base64.b64encode(svg_html.encode("utf-8")).decode("utf-8")
                 st.markdown(
-                    f'<div class="{card_class}">{svg_html}</div>',
+                    f'<div class="{card_class}"><img src="data:image/svg+xml;base64,{svg_b64}" style="width:100%; height:auto; display:block; border-radius:10px;"/></div>',
                     unsafe_allow_html=True,
                 )
                 if is_active:
