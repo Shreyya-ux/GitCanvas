@@ -19,6 +19,7 @@ except ImportError:
         return None
 from utils.cache import clear_cache as clear_ttl_cache
 from themes.styles import THEMES, get_all_themes, CUSTOM_THEMES
+from utils.theme_storage import get_storage_backend
 from utils.error_card import draw_error_card
 from generators.visual_elements import (
     emoji_element,
@@ -37,6 +38,14 @@ get_settings.cache_clear()
 _settings = get_settings()
 
 st.set_page_config(page_title="GitCanvas Builder", page_icon="🛠️", layout="wide")
+
+# Load persisted custom themes from storage backend on every rerun
+CUSTOM_THEMES.clear()
+_storage = get_storage_backend()
+for _name in _storage.list_themes():
+    _data = _storage.load_theme(_name)
+    if _data:
+        CUSTOM_THEMES[_name] = _data
 
 # Custom CSS for bigger code boxes and cleaner UI
 st.markdown("""
@@ -122,8 +131,7 @@ with st.sidebar:
     
     # Get all themes including custom ones
     all_themes = get_all_themes()
-    
-    # Separate predefined and custom themes for better organization
+
     predefined_themes = [k for k in all_themes.keys() if k not in CUSTOM_THEMES]
     custom_theme_names = list(CUSTOM_THEMES.keys())
     
@@ -266,9 +274,12 @@ with st.sidebar:
         
         if st.button("💾 Save Theme", use_container_width=True):
             if theme_name:
-                from themes.styles import save_custom_theme
-                filename = save_custom_theme(theme_name, st.session_state.custom_theme_colors)
-                st.success(f"Theme '{theme_name}' saved! Refresh to see it in the theme list.")
+                from utils.theme_storage import get_storage_backend
+                storage = get_storage_backend()
+                storage.save_theme(theme_name, st.session_state.custom_theme_colors)
+                st.success(f"Theme '{theme_name}' saved!")
+                st.cache_data.clear()
+                st.rerun()
             else:
                 st.error("Please enter a theme name")
 
@@ -495,8 +506,21 @@ def render_tab(svg_bytes, endpoint, username, selected_theme, custom_colors, hid
                 if not value:
                     params.append(f"hide_{key}=true")
 
+        # Handle theme: for custom themes, extract colors and send as params instead of theme name
+        # This ensures the API receives actual color values for unknown custom themes
         if selected_theme != "Default":
-            params.append(f"theme={selected_theme}")
+            if selected_theme in CUSTOM_THEMES:
+                # Custom theme: send individual color params instead of theme name
+                custom_theme_data = CUSTOM_THEMES[selected_theme]
+                for color_key in ["bg_color", "border_color", "title_color", "text_color", "icon_color"]:
+                    if color_key in custom_theme_data:
+                        color_val = custom_theme_data[color_key]
+                        params.append(f"{color_key}={color_val.replace('#', '')}")
+            else:
+                # Predefined theme: send theme name
+                params.append(f"theme={selected_theme}")
+        
+        # Add custom color overrides from the "Customize Colors" section
         for k, v in custom_colors.items():
             params.append(f"{k}={v.replace('#', '')}")
 

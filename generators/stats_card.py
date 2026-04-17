@@ -366,7 +366,7 @@ def draw_stats_card(data, theme_name="Default", show_options=None, custom_colors
     # ── End Compact Layout ────────────────────────────────────────────────
     
     # Title
-    font_family = theme["font_family"]
+    font_family = theme.get("font_family", "Segoe UI, Ubuntu, Sans-Serif")
     title_params = {
         "insert": (20, 35),
         "fill": theme["title_color"],
