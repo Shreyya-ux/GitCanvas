@@ -130,7 +130,22 @@ with st.sidebar:
     # Combine with custom themes at the end
     theme_options = predefined_themes + custom_theme_names
     
-    # ── Theme Search & Filter (Issue #163) ───────────────────────────────────
+    # ── Custom Font Override (Issue #174) ────────────────────────────────────
+    st.markdown("**Font Override**")
+    FONT_OPTIONS = [
+        "Theme Default",
+        "Inter", "Roboto", "Poppins", "Lato", "Montserrat",
+        "Ubuntu", "Nunito", "Merriweather", "Playfair",
+        "Fira Code", "JetBrains Mono", "Space Mono"
+    ]
+    selected_font = st.selectbox(
+        "Card Font",
+        FONT_OPTIONS,
+        help="Override the theme's default font for all generated cards."
+    )
+    # None means use theme default — only pass if user picked something
+    font_override = None if selected_font == "Theme Default" else selected_font
+    # ── End font override ─────────────────────────────────────────────────────
     st.markdown("**Filter Themes**")
 
     # Search bar
@@ -363,10 +378,17 @@ data.setdefault("top_languages", [])
 data.setdefault("contributions", [])
 
 
+
 # Apply custom colors to current theme for python logic
 current_theme_opts = all_themes.get(selected_theme, all_themes["Default"]).copy()
 if custom_colors:
     current_theme_opts.update(custom_colors)
+
+# Add font override to custom_colors if set
+if font_override and custom_colors:
+    custom_colors["font_family"] = font_override
+elif font_override:
+    custom_colors = {"font_family": font_override}
 
 
 tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11, tab12, tab13 = st.tabs([
@@ -380,7 +402,7 @@ def show_code_area(code_content, label="Markdown Code"):
     st.markdown(f"**{label}** (Copy below)")
     st.text_area(label, value=code_content, height=100, label_visibility="collapsed")
 
-def render_tab(svg_bytes, endpoint, username, selected_theme, custom_colors, hide_params=None, code_template=None, excluded_languages=None, output_format="Markdown", extra_params=None):
+def render_tab(svg_bytes, endpoint, username, selected_theme, custom_colors, hide_params=None, code_template=None, excluded_languages=None, output_format="Markdown", font_override=None):
     col1, col2 = st.columns([1.5, 1])
     with col1:
         # Render SVG
@@ -557,7 +579,7 @@ with tab1:
             custom_colors,
             animations_enabled,
         )
-    render_tab(svg_bytes, "stats", username, selected_theme, custom_colors, hide_params=show_ops, code_template=f"[![{username}'s Stats]({{url}})](https://github.com/{{username}})", output_format=output_format)
+    render_tab(svg_bytes, "stats", username, selected_theme, custom_colors, hide_params=show_ops, code_template=f"[![{username}'s Stats]({{url}})](https://github.com/{{username}})", output_format=output_format, font_override=font_override)
     
     # Prepare the SVG string from your generator
     # Use real contribution data already loaded (last 30 days) - no extra API call needed
@@ -631,7 +653,7 @@ with tab2:
     
     # Generate card with exclusions - Pass selected_theme string
     svg_bytes = lang_card.draw_lang_card(data, selected_theme, custom_colors, excluded_languages=excluded_languages)
-    render_tab(svg_bytes, "languages", username, selected_theme, custom_colors, code_template="![Top Langs]({url})", excluded_languages=excluded_languages_str, output_format=output_format)
+    render_tab(svg_bytes, "languages", username, selected_theme, custom_colors, code_template="![Top Langs]({url})", excluded_languages=excluded_languages_str, output_format=output_format, font_override=font_override)
 
 with tab3:
     st.subheader("Top Repositories")
@@ -653,7 +675,7 @@ with tab3:
     
     compact_repo = st.checkbox("📐 Compact Layout", value=False, help="Slim 300px card — fit multiple cards in one README row", key="compact_repo")
     svg_bytes = repo_card.draw_repo_card(filtered_data, selected_theme, custom_colors, sort_by=sort_by, limit=repo_limit, compact=compact_repo)
-    render_tab(svg_bytes, "repos", username, selected_theme, custom_colors, code_template="![Top Repos]({url})", output_format=output_format)
+    render_tab(svg_bytes, "repos", username, selected_theme, custom_colors, code_template="![Top Repos]({url})", output_format=output_format, font_override=font_override)
 
 with tab4:
     st.subheader("Contribution Graph")
@@ -702,14 +724,14 @@ with tab4:
 
     # Pass selected_theme string and date_range
     svg_bytes = contrib_card.draw_contrib_card(data, selected_theme, custom_colors, date_range=date_range, animations_enabled=animations_enabled)
-    render_tab(svg_bytes, "contributions", username, selected_theme, custom_colors, code_template="![Contributions]({url})", output_format=output_format)
+    render_tab(svg_bytes, "contributions", username, selected_theme, custom_colors, code_template="![Contributions]({url})", output_format=output_format, font_override=font_override)
 
 with tab5:
     st.subheader("GitHub Streak")
     st.caption("🔥 Track your contribution streaks! Shows current consecutive days and your all-time longest streak.")
     
     svg_bytes = streak_card.draw_streak_card(data, selected_theme, custom_colors)
-    render_tab(svg_bytes, "streak", username, selected_theme, custom_colors, code_template="![GitHub Streak]({url})", output_format=output_format)
+    render_tab(svg_bytes, "streak", username, selected_theme, custom_colors, code_template="![GitHub Streak]({url})", output_format=output_format, font_override=font_override)
 
 with tab6:
     st.subheader("🔗 Social Links")
@@ -921,7 +943,7 @@ with tab11:
         trophy_data["created_at"] = "2010-01-01T00:00:00Z"
     
     svg_bytes = trophy_card.draw_trophy_card(trophy_data, selected_theme, custom_colors)
-    render_tab(svg_bytes, "trophy", username, selected_theme, custom_colors, code_template="![GitHub Trophy]({url})", output_format=output_format)
+    render_tab(svg_bytes, "trophy", username, selected_theme, custom_colors, code_template="![GitHub Trophy]({url})", output_format=output_format, font_override=font_override)
 
     # ── NEW: Theme Gallery Tab (Issue #162) ──────────────────────────────────
 with tab12:
