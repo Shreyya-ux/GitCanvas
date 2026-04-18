@@ -7,10 +7,17 @@ import svgwrite
 def draw_error_card(error_type: str = "rate_limit", username: str = "user", message: str = "") -> str:
     WIDTH, HEIGHT = 450, 160
 
+    aliases = {
+        "invalid_user": "user_not_found",
+        "rate_limit": "rate_limited",
+        "unknown": "api_error",
+    }
+    resolved_error_type = aliases.get(error_type, error_type)
+
     config = {
-        "rate_limit": {
+        "rate_limited": {
             "icon":    "⏳",
-            "title":   "API Rate Limit Reached",
+            "title":   "Rate Limited",
             "line1":   "GitHub's API limit was hit for this session.",
             "line2":   "Add a GITHUB_TOKEN in the sidebar or .env",
             "line3":   "to increase the limit from 60 → 5,000 req/hr.",
@@ -19,22 +26,22 @@ def draw_error_card(error_type: str = "rate_limit", username: str = "user", mess
             "title_c": "#f0883e",
             "text_c":  "#c9d1d9",
         },
-        "invalid_user": {
+        "user_not_found": {
             "icon":    "❌",
-            "title":   f'User "{username}" Not Found',
+            "title":   "User Not Found",
             "line1":   "No GitHub account exists for this username.",
-            "line2":   "Double-check the spelling and try again.",
+            "line2":   f'Username: "{username}"',
             "line3":   "",
             "bg":      "#161b22",
             "border":  "#f85149",
             "title_c": "#f85149",
             "text_c":  "#c9d1d9",
         },
-        "unknown": {
+        "api_error": {
             "icon":    "⚠️",
-            "title":   "Could Not Load GitHub Data",
-            "line1":   message or "An unexpected error occurred.",
-            "line2":   "Check your internet connection and try again.",
+            "title":   "GitHub API Error",
+            "line1":   message or "Could not load GitHub profile data.",
+            "line2":   "Please try again in a few minutes.",
             "line3":   "",
             "bg":      "#161b22",
             "border":  "#e3b341",
@@ -43,7 +50,7 @@ def draw_error_card(error_type: str = "rate_limit", username: str = "user", mess
         },
     }
 
-    c = config.get(error_type, config["unknown"])
+    c = config.get(resolved_error_type, config["api_error"])
 
     dwg = svgwrite.Drawing(size=(WIDTH, HEIGHT))
     dwg.viewbox(0, 0, WIDTH, HEIGHT)

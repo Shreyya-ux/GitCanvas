@@ -27,3 +27,26 @@ def test_error_card_default_fallback():
     result = draw_error_card("nonexistent_type", username="testuser")
     assert isinstance(result, str)
     assert "</svg>" in result
+
+
+def test_error_card_user_not_found_explicit():
+    result = draw_error_card("user_not_found", username="ghost")
+    assert isinstance(result, str)
+    assert "</svg>" in result
+    assert "User Not Found" in result
+    assert "ghost" in result
+
+
+def test_error_card_rate_limited_explicit():
+    result = draw_error_card("rate_limited", username="testuser")
+    assert isinstance(result, str)
+    assert "</svg>" in result
+    assert "Rate Limited" in result
+
+
+def test_error_card_api_error_explicit():
+    result = draw_error_card("api_error", username="testuser", message="Service unavailable")
+    assert isinstance(result, str)
+    assert "</svg>" in result
+    assert "GitHub API Error" in result
+    assert "Service unavailable" in result
