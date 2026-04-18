@@ -44,8 +44,9 @@ Transform your GitHub stats with our diverse theme library:
 | Feature | Description |
 |---------|-------------|
 | AI Roast 🔥 | Get humorous AI-generated roasts of your GitHub profile |
+| AI Description ✍️ | Generate a theme-aware summary of your GitHub stats from the app |
 | AI Providers | Supports OpenAI and Google Gemini |
-| Roast Styles | Choose savage, friendly, or motivational tone |
+| Description Tones | Choose professional, funny, or creative tone |
 
 ### 🎭 Customization Options
 

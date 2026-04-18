@@ -9,6 +9,7 @@ HEX_COLOR_REGEX = re.compile(r'^#[0-9A-Fa-f]{6}$')
 from dotenv import load_dotenv
 from config.settings import get_settings
 from roast_widget_streamlit import render_roast_widget
+from ai.description_generator import generate_github_description
 from generators import stats_card, lang_card, contrib_card, badge_generator, recent_activity_card, streak_card, repo_card, social_card, trophy_card, sparkline
 from utils import github_api
 try:
@@ -416,7 +417,12 @@ def show_code_area(code_content, label="Markdown Code"):
 def render_embedded_html(html_content: str, *, height: int) -> None:
     """Render inline HTML via iframe to avoid deprecated st.components.v1.html."""
     html_b64 = base64.b64encode(html_content.encode("utf-8")).decode("ascii")
-    st.iframe(f"data:text/html;base64,{html_b64}", height=height, scrolling=False)
+    iframe_src = f"data:text/html;base64,{html_b64}"
+    try:
+        st.iframe(iframe_src, height=height)
+    except TypeError:
+        # Compatibility fallback for Streamlit builds where iframe internals changed.
+        st.components.v1.html(html_content, height=height, scrolling=False)
 
 def render_tab(svg_bytes, endpoint, username, selected_theme, custom_colors, hide_params=None, code_template=None, excluded_languages=None, output_format="Markdown", font_override=None, extra_params=None):
     col1, col2 = st.columns([1.5, 1])
@@ -660,6 +666,55 @@ with tab1:
 
         _code_label = "HTML Code" if output_format == "HTML" else "Markdown Code"
         show_code_area(_spark_code, label=_code_label)
+
+    st.markdown("---")
+    st.subheader("🧠 AI Description")
+    st.caption("Generate a short, theme-aware summary of this GitHub profile.")
+
+    tone_col, button_col = st.columns([1.2, 1])
+    with tone_col:
+        description_tone = st.selectbox(
+            "Tone",
+            ["professional", "funny", "creative"],
+            index=0,
+            key="ai_description_tone",
+        )
+
+    with button_col:
+        if st.button("Generate AI Description", type="primary", use_container_width=True, key="generate_ai_description"):
+            with st.spinner("Generating AI description..."):
+                result = generate_github_description(data, selected_theme, tone=description_tone)
+                st.session_state["ai_description_result"] = {
+                    **result,
+                    "username": username,
+                    "theme": selected_theme,
+                    "tone": description_tone,
+                }
+
+    current_description = st.session_state.get("ai_description_result")
+    if (
+        current_description
+        and current_description.get("username") == username
+        and current_description.get("theme") == selected_theme
+        and current_description.get("tone") == description_tone
+    ):
+        description_text = current_description.get("description", "")
+        st.markdown("**Generated Description**")
+        st.write(description_text)
+
+        source = current_description.get("source", "fallback")
+        st.caption(f"Source: {source} • Tone: {description_tone} • Theme: {selected_theme}")
+
+        st.download_button(
+            label="💾 Save Description",
+            data=description_text,
+            file_name=f"{username}_{selected_theme}_description.txt",
+            mime="text/plain",
+            use_container_width=False,
+            key="save_ai_description",
+        )
+    else:
+        st.info("Click **Generate AI Description** to create a summary for the current theme.")
 
 
 with tab2:
