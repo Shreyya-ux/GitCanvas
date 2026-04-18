@@ -107,7 +107,12 @@ def calculate_streak_data(contributions):
 @cache_github_api
 def fetch_github_graphql(username, token=None):
     if not token:
-        token = token or st.secrets.get("GITHUB_TOKEN") or os.getenv("GITHUB_TOKEN")
+        try:
+            token = st.secrets.get("GITHUB_TOKEN")
+        except Exception:
+            token = None
+        if not token:
+            token = os.getenv("GITHUB_TOKEN")
     if not token:
         return None
 
@@ -251,7 +256,12 @@ def get_github_headers(token=None):
     }
 
     if not token:
-        token = token or st.secrets.get("GITHUB_TOKEN") or os.getenv("GITHUB_TOKEN")
+        try:
+            token = st.secrets.get("GITHUB_TOKEN")
+        except Exception:
+            token = None
+        if not token:
+            token = os.getenv("GITHUB_TOKEN")
     if token:
         headers["Authorization"] = f"Bearer {token}"
 
@@ -586,3 +596,197 @@ def fetch_sparkline_data(username, token=None):
     
     # Return as a list of counts from oldest to newest
     return [daily_commits[date] for date in reversed(dates)]
+
+
+@cache_github_api
+def get_github_actions_data(username, token=None):
+    """
+    Fetches GitHub Actions statistics for a user.
+    
+    Requires authentication token - Actions data is not available publicly.
+    
+    Args:
+        username: GitHub username
+        token: GitHub API token (required for Actions data)
+    
+    Returns:
+        Dict with actions statistics or None if no data available
+    """
+    if not token:
+        # Try to get token from streamlit secrets or environment
+        try:
+            token = st.secrets.get("GITHUB_TOKEN")
+        except Exception:
+            # Secrets file not found or not accessible
+            token = None
+        
+        if not token:
+            token = os.getenv("GITHUB_TOKEN")
+    
+    if not token:
+        logger.warning(f"GitHub token required to fetch Actions data for {username}")
+        return None
+    
+    try:
+        # Get user's repositories
+        repos_url = f"https://api.github.com/users/{username}/repos?per_page=100"
+        headers = get_github_headers(token)
+        
+        repos_resp = requests.get(repos_url, headers=headers, timeout=10)
+        if repos_resp.status_code != 200:
+            logger.error(f"Failed to fetch repos for Actions data: {repos_resp.status_code}")
+            return None
+        
+        repos = repos_resp.json()
+        if not isinstance(repos, list):
+            logger.error("Invalid repos response format")
+            return None
+        
+        # Collect actions data from repos
+        total_workflows = 0
+        total_runs = 0
+        successful_runs = 0
+        failed_runs = 0
+        recent_runs = []
+        workflows_by_repo = []
+        
+        for repo in repos:
+            repo_name = repo.get('name', '')
+            if not repo_name:
+                continue
+            
+            try:
+                # Fetch workflows for this repo
+                workflows_url = f"https://api.github.com/repos/{username}/{repo_name}/actions/workflows"
+                workflows_resp = requests.get(workflows_url, headers=headers, timeout=10)
+                
+                if workflows_resp.status_code == 200:
+                    workflows = workflows_resp.json().get('workflows', [])
+                    total_workflows += len(workflows)
+                    
+                    for workflow in workflows:
+                        workflow_id = workflow.get('id')
+                        workflow_name = workflow.get('name', 'Unknown')
+                        
+                        if workflow_id:
+                            try:
+                                # Fetch runs for this workflow
+                                runs_url = f"https://api.github.com/repos/{username}/{repo_name}/actions/workflows/{workflow_id}/runs?per_page=10"
+                                runs_resp = requests.get(runs_url, headers=headers, timeout=10)
+                                
+                                if runs_resp.status_code == 200:
+                                    runs_data = runs_resp.json().get('workflow_runs', [])
+                                    total_runs += len(runs_data)
+                                    
+                                    for run in runs_data:
+                                        status = run.get('conclusion', '')
+                                        if status == 'success':
+                                            successful_runs += 1
+                                        elif status == 'failure':
+                                            failed_runs += 1
+                                        
+                                        # Collect recent runs
+                                        recent_runs.append({
+                                            'repo': repo_name,
+                                            'workflow': workflow_name,
+                                            'status': status,
+                                            'created_at': run.get('created_at', ''),
+                                            'updated_at': run.get('updated_at', ''),
+                                            'conclusion': run.get('conclusion', 'unknown')
+                                        })
+                            except requests.RequestException as e:
+                                logger.warning(f"Failed to fetch runs for {repo_name}/{workflow_name}: {e}")
+                else:
+                    logger.debug(f"No workflows found for {repo_name}")
+                    
+            except requests.RequestException as e:
+                logger.warning(f"Failed to fetch workflows for {repo_name}: {e}")
+        
+        # Sort recent runs by updated_at (most recent first)
+        try:
+            from datetime import datetime
+            recent_runs.sort(
+                key=lambda x: datetime.fromisoformat(x.get('updated_at', '2000-01-01').replace('Z', '+00:00')),
+                reverse=True
+            )
+        except Exception as e:
+            logger.warning(f"Failed to sort recent runs: {e}")
+        
+        # Keep only last 20 recent runs
+        recent_runs = recent_runs[:20]
+        
+        # Calculate success rate
+        success_rate = 0
+        if total_runs > 0:
+            success_rate = round((successful_runs / total_runs) * 100, 1)
+        
+        return {
+            'total_workflows': total_workflows,
+            'total_runs': total_runs,
+            'successful_runs': successful_runs,
+            'failed_runs': failed_runs,
+            'success_rate': success_rate,
+            'recent_runs': recent_runs,
+            'data_source': 'github_actions_api'
+        }
+        
+    except Exception as e:
+        import traceback
+        logger.error(f"Error fetching GitHub Actions data: {e}")
+        logger.debug(f"Traceback: {traceback.format_exc()}")
+        return None
+
+
+def get_mock_actions_data(username):
+    """Returns mock GitHub Actions data for testing."""
+    return {
+        'total_workflows': 5,
+        'total_runs': 47,
+        'successful_runs': 43,
+        'failed_runs': 4,
+        'success_rate': 91.5,
+        'recent_runs': [
+            {
+                'repo': 'awesome-project',
+                'workflow': 'Tests',
+                'status': 'completed',
+                'created_at': '2025-01-20T14:30:00Z',
+                'updated_at': '2025-01-20T14:45:00Z',
+                'conclusion': 'success'
+            },
+            {
+                'repo': 'web-app',
+                'workflow': 'Build & Deploy',
+                'status': 'completed',
+                'created_at': '2025-01-20T13:00:00Z',
+                'updated_at': '2025-01-20T13:20:00Z',
+                'conclusion': 'success'
+            },
+            {
+                'repo': 'api-service',
+                'workflow': 'Linting',
+                'status': 'completed',
+                'created_at': '2025-01-19T10:15:00Z',
+                'updated_at': '2025-01-19T10:18:00Z',
+                'conclusion': 'failure'
+            },
+            {
+                'repo': 'awesome-project',
+                'workflow': 'Tests',
+                'status': 'completed',
+                'created_at': '2025-01-19T08:00:00Z',
+                'updated_at': '2025-01-19T08:15:00Z',
+                'conclusion': 'success'
+            },
+            {
+                'repo': 'mobile-app',
+                'workflow': 'Build',
+                'status': 'completed',
+                'created_at': '2025-01-18T16:45:00Z',
+                'updated_at': '2025-01-18T17:00:00Z',
+                'conclusion': 'success'
+            },
+        ],
+        'username': username,
+        'data_source': 'mock'
+    }

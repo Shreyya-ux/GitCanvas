@@ -4,7 +4,7 @@ from typing import Optional
 from fastapi import FastAPI, Response, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from config.settings import get_settings
-from generators import stats_card, lang_card, contrib_card, recent_activity_card, trophy_card, streak_card, repo_card, social_card, badge_generator
+from generators import stats_card, lang_card, contrib_card, recent_activity_card, trophy_card, streak_card, repo_card, social_card, badge_generator, actions_card
 from utils import github_api
 from utils.cache import cache_svg_response, get_cache_stats, clear_cache
 from utils.validators import (
@@ -594,6 +594,36 @@ async def get_badges(
         return cached_text_response(json_content, request, media_type="application/json")
 
     return cached_text_response(markdown_output, request)
+
+
+@app.get("/api/actions")
+async def get_actions(
+    request: Request,
+    username: str,
+    theme: str = "Default",
+    bg_color: Optional[str] = None,
+    title_color: Optional[str] = None,
+    text_color: Optional[str] = None,
+    border_color: Optional[str] = None
+):
+    """
+    Get GitHub Actions statistics card
+    Requires GitHub token for accessing Actions data
+    """
+    # Validate inputs
+    username = validate_username(username)
+    theme = validate_theme(theme)
+    
+    # SECURITY FIX: Get token from Authorization header instead of URL parameter
+    token = get_token_from_header(request)
+    
+    custom_colors = parse_colors(bg_color, title_color, text_color, border_color)
+    
+    # Try to get real data with token, fall back to mock if unavailable
+    data = github_api.get_github_actions_data(username, token) or github_api.get_mock_actions_data(username)
+    
+    svg_content = generate_cached_svg(actions_card.draw_actions_card, data, theme, custom_colors=custom_colors)
+    return svg_response(svg_content, request)
 
 # Cache management endpoints
 

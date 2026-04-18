@@ -9,7 +9,7 @@ HEX_COLOR_REGEX = re.compile(r'^#[0-9A-Fa-f]{6}$')
 from dotenv import load_dotenv
 from config.settings import get_settings
 from roast_widget_streamlit import render_roast_widget
-from generators import stats_card, lang_card, contrib_card, badge_generator, recent_activity_card, streak_card, repo_card, social_card, trophy_card, sparkline
+from generators import stats_card, lang_card, contrib_card, badge_generator, recent_activity_card, streak_card, repo_card, social_card, trophy_card, sparkline, actions_card
 from utils import github_api
 try:
     from utils.github_utils import get_rate_limit_status as fetch_rate_limit_status
