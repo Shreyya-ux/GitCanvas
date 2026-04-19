@@ -14,7 +14,7 @@ def render(data):
     dwg = svgwrite.Drawing(size=("100%", "100%"), viewBox=f"0 0 {width} {height}")
     
     # Background: Dark Studio
-    dwg.add(dwg.rect(insert=(0, 0), size=("100%", "100%"), fill="#1a1a1a"))
+    dwg.add(dwg.rect(insert=(0, 0), size=("100%", "100%"), fill="#0d0d0d"))
     
     if not contributions:
         dwg.add(dwg.text("No Data", insert=(width/2, height/2), fill="white"))
@@ -43,12 +43,22 @@ def render(data):
         
         x = start_x + i * (bar_width + 2)
         
-        # Draw mirrored bar
-        # Color: Gradient like? Let's use Neon Pink/Purple
-        color = "#d600ff"
-        if count > 5:
-            color = "#00ffea" # High notes are Cyan
+        if count == 0:
+            color="#444444"
+        elif count<3:
+            color="#ff00cc"
+        elif color<6:
+            color="#9d00ff"
+        else:
+            color="#00f5ff"
+        
             
         dwg.add(dwg.rect(insert=(x, center_y - amp), size=(bar_width, amp * 2), fill=color, rx=bar_width/2, ry=bar_width/2))
-        
+        if count > 5:
+            dwg.add(dwg.text(
+                "♪",
+                insert=(x, center_y - amp - 5),
+                fill="#ff00cc",
+                font_size="10px"
+            ))  
     return dwg.tostring()
