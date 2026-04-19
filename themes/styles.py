@@ -10,7 +10,7 @@ THEMES = {
         "text_font_size": 14,
         "tags": ["dark", "minimal", "clean", "popular"]
     },
-    "Music": {
+    "Music 🎼": {
         "bg_color": "#0d0d0d",
         "border_color": "#9d00ff",
         "title_color": "#ff00cc",
