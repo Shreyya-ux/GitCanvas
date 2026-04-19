@@ -29,6 +29,38 @@ class GitCanvasSettings(BaseSettings):
     github_token: Optional[SecretStr] = Field(default=None)
     openai_api_key: Optional[SecretStr] = Field(default=None)
     gemini_api_key: Optional[SecretStr] = Field(default=None)
+    
+    # Redis caching configuration
+    cache_backend: str = Field(default="local", description="Cache backend: 'local' or 'redis'")
+    redis_url: Optional[str] = Field(default=None, description="Redis connection URL (e.g., redis://localhost:6379/0)")
+    redis_enabled: bool = Field(default=False, description="Enable Redis caching for distributed deployments")
+    redis_key_prefix: str = Field(default="gitcanvas:", description="Redis key prefix used to isolate this app's keys")
+
+    # CORS configuration
+    allowed_origins: str = Field(
+        default="*",
+        description="Comma-separated list of allowed CORS origins, or '*' to allow all (not recommended for production)",
+    )
+
+    def allowed_origins_list(self) -> list[str]:
+        """Return parsed list of allowed origins."""
+        if self.allowed_origins.strip() == "*":
+            return ["*"]
+        return [o.strip() for o in self.allowed_origins.split(",") if o.strip()]
+
+    # Cache-clear endpoint protection
+    cache_clear_enabled: bool = Field(
+        default=False,
+        description="Enable cache-clear endpoints; should remain disabled in production unless explicitly needed",
+    )
+    cache_clear_allow_localhost_only: bool = Field(
+        default=True,
+        description="Allow cache-clear endpoints only from localhost when no admin token is configured",
+    )
+    cache_clear_admin_token: Optional[SecretStr] = Field(
+        default=None,
+        description="Optional admin token required to call cache-clear endpoints",
+    )
 
     @field_validator("github_token", "openai_api_key", "gemini_api_key", mode="before")
     @classmethod
@@ -39,6 +71,16 @@ class GitCanvasSettings(BaseSettings):
             return None
         return v
 
+    @field_validator("redis_key_prefix", mode="before")
+    @classmethod
+    def normalize_redis_key_prefix(cls, v):
+        if v is None:
+            return "gitcanvas:"
+        prefix = str(v).strip() or "gitcanvas:"
+        if not prefix.endswith(":"):
+            prefix += ":"
+        return prefix
+
     def github_token_value(self) -> Optional[str]:
         return _secret_plain(self.github_token)
 
@@ -47,6 +89,9 @@ class GitCanvasSettings(BaseSettings):
 
     def gemini_api_key_value(self) -> Optional[str]:
         return _secret_plain(self.gemini_api_key)
+
+    def cache_clear_admin_token_value(self) -> Optional[str]:
+        return _secret_plain(self.cache_clear_admin_token)
 
     @property
     def has_github_token(self) -> bool:

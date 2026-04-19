@@ -58,5 +58,5 @@ desktop.ini
 
 .env
 .env.text
-.env.example
-.env.* 
+.env.*
+!.env.example

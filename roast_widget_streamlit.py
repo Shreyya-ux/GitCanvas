@@ -4,12 +4,41 @@ Add this to your GitCanvas Streamlit app
 """
 
 import streamlit as st
-import os
+from typing import Any
 from ai.ai_roast_service import generate_profile_roast
 from utils.github_utils import fetch_github_stats
 
 
-def render_roast_widget(username: str):
+def _normalize_profile_data(profile_data: dict[str, Any] | None, username: str) -> dict[str, Any]:
+    """Normalize profile shape so AI roast service always gets expected keys."""
+    base: dict[str, Any] = {
+        "username": username,
+        "public_repos": 0,
+        "total_commits": 0,
+        "top_languages": [],
+    }
+    if not profile_data:
+        return base
+
+    normalized = dict(base)
+    normalized["username"] = profile_data.get("username") or profile_data.get("login") or username
+    normalized["public_repos"] = profile_data.get("public_repos", 0)
+    normalized["total_commits"] = profile_data.get("total_commits", 0)
+
+    raw_langs = profile_data.get("top_languages", [])
+    langs: list[dict[str, Any]] = []
+    for entry in raw_langs:
+        if isinstance(entry, dict):
+            name = entry.get("name")
+            if name:
+                langs.append({"name": name, "count": entry.get("count", 0)})
+        elif isinstance(entry, (list, tuple)) and entry:
+            langs.append({"name": str(entry[0]), "count": entry[1] if len(entry) > 1 else 0})
+    normalized["top_languages"] = langs
+    return normalized
+
+
+def render_roast_widget(username: str, profile_data: dict[str, Any] | None = None):
     """
     Render the AI Roast widget in Streamlit
     
@@ -90,15 +119,19 @@ def render_roast_widget(username: str):
             if st.button("🎭 Generate Roast", use_container_width=True, type="primary"):
                 with st.spinner("🔥 Cooking up a roast..."):
                     try:
-                        # Fetch GitHub stats
-                        profile_data = fetch_github_stats(username)
-                        
-                        if profile_data:
+                        # Reuse already loaded profile data first to avoid rate-limit failures.
+                        source_profile = _normalize_profile_data(profile_data, username)
+                        if source_profile.get("total_commits", 0) <= 0 and not source_profile.get("top_languages"):
+                            fetched_profile = fetch_github_stats(username)
+                            if fetched_profile:
+                                source_profile = _normalize_profile_data(fetched_profile, username)
+
+                        if source_profile:
                             # Generate roast
-                            roast_result = generate_profile_roast(profile_data)
+                            roast_result = generate_profile_roast(source_profile)
                             st.session_state.roast_data = {
                                 'roast': roast_result['roast'],
-                                'profile': profile_data,
+                                'profile': source_profile,
                                 'source': roast_result['source']
                             }
                         else:

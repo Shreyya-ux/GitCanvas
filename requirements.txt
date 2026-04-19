@@ -10,3 +10,4 @@ cairosvg==2.7.1
 cachetools
 pydantic>=2.0.0
 pydantic-settings>=2.0.0
+redis>=4.5.0

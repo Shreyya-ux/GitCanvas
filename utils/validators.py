@@ -197,3 +197,41 @@ def validate_date(date_str: Optional[str]) -> Optional[str]:
         )
     
     return date_str
+
+
+# Allowed safe web-safe + Google Fonts 
+ALLOWED_FONTS = {
+    "inter", "roboto", "poppins", "lato", "montserrat", "opensans",
+    "raleway", "nunito", "ubuntu", "sourcesanspro", "merriweather",
+    "playfair", "firacode", "jetbrainsmono", "spacemono", "inconsolata",
+    "segoeui", "arial", "verdana", "georgia", "couriernew"
+}
+
+def validate_font(font: Optional[str]) -> Optional[str]:
+    """
+    Validates and sanitizes a font name query param.
+    Only allows known safe font names to prevent SVG injection.
+    Strips spaces, lowercases for comparison, returns original casing.
+
+    Args:
+        font: raw font string from query param e.g. "Inter" or "Fira Code"
+
+    Returns:
+        Sanitized font string or None if invalid/not provided
+    """
+    if not font:
+        return None
+
+    # Strip dangerous characters — only allow letters, digits, spaces
+    import re
+    font = re.sub(r"[^a-zA-Z0-9 ]", "", font).strip()
+
+    if not font:
+        return None
+
+    # Check against allowlist (case-insensitive, spaces stripped)
+    normalized = font.replace(" ", "").lower()
+    if normalized not in ALLOWED_FONTS:
+        return None  # Silently fall back to theme default
+
+    return font
