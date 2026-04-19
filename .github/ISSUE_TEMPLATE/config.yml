@@ -1,0 +1,17 @@
+# GitHub Issue Template Configuration
+# See: https://docs.github.com/en/communities/using-templates-to-encourage-useful-issues-and-pull-requests/configuring-issue-templates-for-your-repository
+
+blank_issues_enabled: false
+
+contact_links:
+  - name: 📚 Documentation
+    url: https://github.com/akshitagupta15/GitCanvas/blob/main/README.md
+    about: Check our README and docs for common questions
+
+  - name: 💬 Discussions
+    url: https://github.com/akshitagupta15/GitCanvas/discussions
+    about: Ask questions and share ideas in discussions
+
+  - name: 🐙 GitHub Issues Page
+    url: https://github.com/akshitagupta15/GitCanvas/issues
+    about: Browse open issues to see what's being worked on
