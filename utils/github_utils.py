@@ -199,15 +199,15 @@ if __name__ == "__main__":
     
     if len(sys.argv) > 1:
         username = sys.argv[1]
-        print(f"Fetching stats for: {username}")
+        logger.info(f"Fetching stats for: {username}")
         stats = fetch_github_stats(username)
         
         if stats:
-            print(f"\nUsername: {stats['username']}")
-            print(f"Public Repos: {stats['public_repos']}")
-            print(f"Estimated Commits: {stats['total_commits']}")
-            print(f"Top Languages: {', '.join([l['name'] for l in stats['top_languages']])}")
+            logger.info(f"Username: {stats['username']}")
+            logger.info(f"Public Repos: {stats['public_repos']}")
+            logger.info(f"Estimated Commits: {stats['total_commits']}")
+            logger.info(f"Top Languages: {', '.join([l['name'] for l in stats['top_languages']])}")
         else:
-            print("Failed to fetch stats")
+            logger.error("Failed to fetch stats")
     else:
-        print("Usage: python github_utils.py <username>")
+        logger.info("Usage: python github_utils.py <username>")
