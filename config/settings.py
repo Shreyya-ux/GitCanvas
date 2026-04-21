@@ -36,6 +36,18 @@ class GitCanvasSettings(BaseSettings):
     redis_enabled: bool = Field(default=False, description="Enable Redis caching for distributed deployments")
     redis_key_prefix: str = Field(default="gitcanvas:", description="Redis key prefix used to isolate this app's keys")
 
+    # CORS configuration
+    allowed_origins: str = Field(
+        default="*",
+        description="Comma-separated list of allowed CORS origins, or '*' to allow all (not recommended for production)",
+    )
+
+    def allowed_origins_list(self) -> list[str]:
+        """Return parsed list of allowed origins."""
+        if self.allowed_origins.strip() == "*":
+            return ["*"]
+        return [o.strip() for o in self.allowed_origins.split(",") if o.strip()]
+
     # Cache-clear endpoint protection
     cache_clear_enabled: bool = Field(
         default=False,

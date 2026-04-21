@@ -89,7 +89,8 @@ class GitHubEvent(BaseModel):
     def validate_type(cls, v):
         allowed_types = {
             'PullRequestEvent', 'IssuesEvent', 'PushEvent', 'CreateEvent',
-            'DeleteEvent', 'ForkEvent', 'WatchEvent', 'ReleaseEvent'
+            'DeleteEvent', 'ForkEvent', 'WatchEvent', 'ReleaseEvent',
+            'IssueCommentEvent', 'PullRequestReviewCommentEvent'
         }
         if v not in allowed_types:
             # Log unknown type but don't fail validation
