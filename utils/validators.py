@@ -59,6 +59,12 @@ def validate_theme(theme: str) -> str:
     # Import here to avoid circular dependency
     from themes.styles import THEMES, CUSTOM_THEMES
     
+    # Backward-compatible aliases for renamed predefined themes.
+    theme_aliases = {
+        "Music 🎼": "Music",
+    }
+    theme = theme_aliases.get(theme, theme)
+
     valid_themes = list(THEMES.keys()) + list(CUSTOM_THEMES.keys())
     
     if theme not in valid_themes:

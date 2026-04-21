@@ -10,7 +10,7 @@ THEMES = {
         "text_font_size": 14,
         "tags": ["dark", "minimal", "clean", "popular"]
     },
-    "Music 🎼": {
+    "Music": {
         "bg_color": "#0d0d0d",
         "border_color": "#9d00ff",
         "title_color": "#ff00cc",
@@ -18,9 +18,8 @@ THEMES = {
         "icon_color": "#00f5ff",
         "font_family": "'Courier New', Courier, monospace",
         "title_font_size": 20,
-        "text_font_size": 14
-
-    
+        "text_font_size": 14,
+        "tags": ["dark", "music", "neon", "colorful", "fun"]
     },
     "Gaming": {
         "bg_color": "#0d0d0d",
