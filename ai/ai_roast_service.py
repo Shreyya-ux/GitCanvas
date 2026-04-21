@@ -206,5 +206,5 @@ if __name__ == "__main__":
     }
     
     result = generate_profile_roast(test_profile)
-    print(f"Roast: {result['roast']}")
-    print(f"Source: {result['source']}")
+    logger.info(f"Roast: {result['roast']}")
+    logger.info(f"Source: {result['source']}")
