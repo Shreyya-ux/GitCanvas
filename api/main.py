@@ -107,6 +107,104 @@ def get_token_from_header(request: Request) -> Optional[str]:
     return None
 
 
+def error_svg_response(error_message: str, theme_name: str = "Default") -> str:
+    """
+    Generate a simple error SVG card when data fetching fails.
+    
+    Args:
+        error_message: Error message to display
+        theme_name: Theme to use for styling
+        
+    Returns:
+        SVG string with error message
+    """
+    from themes.styles import THEMES
+    import svgwrite
+    
+    theme = THEMES.get(theme_name, THEMES["Default"])
+    width, height = 500, 200
+    
+    dwg = svgwrite.Drawing(size=("100%", "100%"), viewBox=f"0 0 {width} {height}")
+    
+    # Background
+    dwg.add(dwg.rect(
+        insert=(0, 0),
+        size=("100%", "100%"),
+        rx=10,
+        ry=10,
+        fill=theme.get("bg_color", "#0d1117"),
+        stroke=theme.get("fail_color", "#f85149"),
+        stroke_width=2
+    ))
+    
+    # Error icon
+    dwg.add(dwg.circle(
+        center=(40, 40),
+        r=20,
+        fill="none",
+        stroke=theme.get("fail_color", "#f85149"),
+        stroke_width=2
+    ))
+    
+    # Exclamation mark
+    dwg.add(dwg.text(
+        "!",
+        insert=(35, 50),
+        font_size=30,
+        font_weight="bold",
+        fill=theme.get("fail_color", "#f85149"),
+        font_family="Arial, sans-serif"
+    ))
+    
+    # Error title
+    dwg.add(dwg.text(
+        "Error Loading Data",
+        insert=(80, 45),
+        font_size=16,
+        font_weight="bold",
+        fill=theme.get("fail_color", "#f85149"),
+        font_family="Arial, sans-serif"
+    ))
+    
+    # Error message (truncated to 2 lines)
+    lines = error_message.split(' ')
+    line1, line2 = [], []
+    current_line = line1
+    for word in lines[:20]:  # Limit to 20 words
+        if len(' '.join(current_line + [word])) > 50:
+            current_line = line2
+        current_line.append(word)
+    
+    dwg.add(dwg.text(
+        ' '.join(line1),
+        insert=(80, 70),
+        font_size=12,
+        fill=theme.get("text_color", "#c9d1d9"),
+        font_family="Arial, sans-serif"
+    ))
+    
+    if line2:
+        dwg.add(dwg.text(
+            ' '.join(line2),
+            insert=(80, 90),
+            font_size=12,
+            fill=theme.get("text_color", "#c9d1d9"),
+            font_family="Arial, sans-serif"
+        ))
+    
+    # Help text
+    dwg.add(dwg.text(
+        "Check username and try again",
+        insert=(80, 120),
+        font_size=11,
+        fill=theme.get("text_color", "#8b949e"),
+        font_family="Arial, sans-serif",
+        font_style="italic"
+    ))
+    
+    return dwg.tostring()
+
+
 def _is_local_request(request: Request) -> bool:
     """Return True when request originates from localhost."""
     if not request.client:
@@ -190,7 +288,23 @@ async def get_stats(
     # Get optional token from Authorization header for higher rate limits
     token = get_token_from_header(request)
     
-    data = github_api.get_live_github_data(username, token) or github_api.get_mock_data(username)
+    data = github_api.get_live_github_data(username, token)
+    
+    # If data fetch failed, return error response
+    if data is None:
+        svg_content = error_svg_response(
+            "Failed to fetch GitHub data. Check username or try again later.",
+            theme
+        )
+        return Response(
+            content=svg_content,
+            media_type="image/svg+xml",
+            status_code=502,
+            headers={
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "X-Error": "GitHub API Error"
+            }
+        )
     
     show_options = {
         "stars": not hide_stars,
@@ -220,7 +334,24 @@ async def get_languages(
     username = validate_username(username)
     theme = validate_theme(theme)
     
-    data = github_api.get_live_github_data(username) or github_api.get_mock_data(username)
+    data = github_api.get_live_github_data(username)
+    
+    # If data fetch failed, return error response
+    if data is None:
+        svg_content = error_svg_response(
+            "Failed to fetch GitHub data. Check username or try again later.",
+            theme
+        )
+        return Response(
+            content=svg_content,
+            media_type="image/svg+xml",
+            status_code=502,
+            headers={
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "X-Error": "GitHub API Error"
+            }
+        )
+    
     custom_colors = parse_colors(bg_color, title_color, text_color, border_color)
     
     # Parse exclude parameter into list of languages
@@ -254,7 +385,24 @@ async def get_contributions(
     start_date = validate_date(start_date)
     end_date = validate_date(end_date)
     
-    data = github_api.get_live_github_data(username) or github_api.get_mock_data(username)
+    data = github_api.get_live_github_data(username)
+    
+    # If data fetch failed, return error response
+    if data is None:
+        svg_content = error_svg_response(
+            "Failed to fetch GitHub data. Check username or try again later.",
+            theme
+        )
+        return Response(
+            content=svg_content,
+            media_type="image/svg+xml",
+            status_code=502,
+            headers={
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "X-Error": "GitHub API Error"
+            }
+        )
+    
     custom_colors = parse_colors(bg_color, title_color, text_color, border_color)
     
     # Build date_range dict if dates are provided
@@ -306,7 +454,24 @@ async def get_trophy(
     username = validate_username(username)
     theme = validate_theme(theme)
     
-    data = github_api.get_live_github_data(username) or github_api.get_mock_data(username)
+    data = github_api.get_live_github_data(username)
+    
+    # If data fetch failed, return error response
+    if data is None:
+        svg_content = error_svg_response(
+            "Failed to fetch GitHub data. Check username or try again later.",
+            theme
+        )
+        return Response(
+            content=svg_content,
+            media_type="image/svg+xml",
+            status_code=502,
+            headers={
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "X-Error": "GitHub API Error"
+            }
+        )
+    
     custom_colors = parse_colors(bg_color, title_color, text_color, border_color)
     svg_content = trophy_card.draw_trophy_card(data, theme, custom_colors=custom_colors)
     return svg_response(svg_content, request)
@@ -326,7 +491,24 @@ async def get_streak(
     username = validate_username(username)
     theme = validate_theme(theme)
     
-    data = github_api.get_live_github_data(username) or github_api.get_mock_data(username)
+    data = github_api.get_live_github_data(username)
+    
+    # If data fetch failed, return error response
+    if data is None:
+        svg_content = error_svg_response(
+            "Failed to fetch GitHub data. Check username or try again later.",
+            theme
+        )
+        return Response(
+            content=svg_content,
+            media_type="image/svg+xml",
+            status_code=502,
+            headers={
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "X-Error": "GitHub API Error"
+            }
+        )
+    
     custom_colors = parse_colors(bg_color, title_color, text_color, border_color)
     svg_content = streak_card.draw_streak_card(data, theme, custom_colors=custom_colors)
     return svg_response(svg_content, request)
@@ -350,7 +532,24 @@ async def get_repos(
     sort_by = validate_sort_by(sort_by)
     limit = validate_limit(limit, min_val=1, max_val=10)
     
-    data = github_api.get_live_github_data(username) or github_api.get_mock_data(username)
+    data = github_api.get_live_github_data(username)
+    
+    # If data fetch failed, return error response
+    if data is None:
+        svg_content = error_svg_response(
+            "Failed to fetch GitHub data. Check username or try again later.",
+            theme
+        )
+        return Response(
+            content=svg_content,
+            media_type="image/svg+xml",
+            status_code=502,
+            headers={
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "X-Error": "GitHub API Error"
+            }
+        )
+    
     custom_colors = parse_colors(bg_color, title_color, text_color, border_color)
     svg_content = repo_card.draw_repo_card(data, theme, custom_colors=custom_colors, sort_by=sort_by, limit=limit)
     return svg_response(svg_content, request)
@@ -536,10 +735,42 @@ async def get_actions(
     # SECURITY FIX: Get token from Authorization header instead of URL parameter
     token = get_token_from_header(request)
     
+    # Check if token is provided - Actions data requires authentication
+    if not token:
+        svg_content = error_svg_response(
+            "GitHub Actions requires authentication. Provide token via Authorization header.",
+            theme
+        )
+        return Response(
+            content=svg_content,
+            media_type="image/svg+xml",
+            status_code=401,
+            headers={
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "X-Error": "Missing Authentication Token"
+            }
+        )
+    
     custom_colors = parse_colors(bg_color, title_color, text_color, border_color)
     
-    # Try to get real data with token, fall back to mock if unavailable
-    data = github_api.get_github_actions_data(username, token) or github_api.get_mock_actions_data(username)
+    # Try to get real data with token
+    data = github_api.get_github_actions_data(username, token)
+    
+    # If data fetch failed, return error response
+    if data is None:
+        svg_content = error_svg_response(
+            "Failed to fetch GitHub Actions data. Check username or token permissions.",
+            theme
+        )
+        return Response(
+            content=svg_content,
+            media_type="image/svg+xml",
+            status_code=502,
+            headers={
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "X-Error": "GitHub API Error"
+            }
+        )
     
     svg_content = generate_cached_svg(actions_card.draw_actions_card, data, theme, custom_colors=custom_colors)
     return svg_response(svg_content, request)
