@@ -1,8 +1,8 @@
 import svgwrite
 from themes.styles import THEMES
-from .svg_base import create_svg_base
+from .svg_base import create_svg_base, draw_card_background, draw_divider_line
 
-def draw_repo_card(data, theme_name="Default", custom_colors=None, sort_by="stars", limit=5):
+def draw_repo_card(data, theme_name="Default", custom_colors=None, sort_by="stars", limit=5, compact=False):
     """
     Generates the Top Repositories Card SVG.
     data: dict with 'top_repos' list containing repo data
@@ -23,6 +23,97 @@ def draw_repo_card(data, theme_name="Default", custom_colors=None, sort_by="star
     
     # Apply limit
     repos = repos[:limit]
+
+    # ── Compact Layout 
+    if compact:
+        compact_width  = 300
+        compact_height = 30 + (len(repos) * 28) + 10
+        
+        from themes.styles import THEMES
+        if isinstance(theme_name, dict):
+            theme = theme_name.copy()
+        else:
+            theme = THEMES.get(theme_name, THEMES["Default"]).copy()
+            if custom_colors:
+                theme.update(custom_colors)
+
+        bg_col     = theme.get("bg_color",     "#0d1117")
+        border_col = theme.get("border_color", "#30363d")
+        title_col  = theme.get("title_color",  "#58a6ff")
+        text_col   = theme.get("text_color",   "#c9d1d9")
+        icon_col   = theme.get("icon_color",   "#8b949e")
+        font       = theme.get("font_family",  "Segoe UI, Ubuntu, Sans-Serif")
+
+        c_dwg = svgwrite.Drawing(size=(compact_width, compact_height))
+        c_dwg.viewbox(0, 0, compact_width, compact_height)
+
+        # Background
+        c_dwg.add(c_dwg.rect(
+            insert=(0, 0), size=(compact_width, compact_height),
+            rx=10, ry=10,
+            fill=bg_col, stroke=border_col, stroke_width=1.5
+        ))
+
+        # Title
+        sort_labels = {"stars": "Top Repos ⭐", "forks": "Top Repos 🔱", "updated": "Top Repos 🕐"}
+        c_dwg.add(c_dwg.text(
+            sort_labels.get(sort_by, "Top Repos"),
+            insert=(12, 20),
+            fill=title_col, font_size=10,
+            font_family=font, font_weight="bold"
+        ))
+
+        # Divider
+        c_dwg.add(c_dwg.line(
+            start=(12, 25), end=(compact_width - 12, 25),
+            stroke=border_col, stroke_width=0.8
+        ))
+
+        # Repo rows
+        for i, repo in enumerate(repos[:5]):
+            y = 38 + i * 28
+            name = repo.get("name", "Unknown")[:22]
+            stars = repo.get("stars", 0)
+
+            # Repo name
+            c_dwg.add(c_dwg.text(
+                name,
+                insert=(12, y),
+                fill=text_col, font_size=9,
+                font_family=font, font_weight="bold"
+            ))
+
+            # Star dot + count
+            c_dwg.add(c_dwg.circle(
+                center=(compact_width - 45, y - 4),
+                r=3, fill="#FFD700", opacity=0.9
+            ))
+            c_dwg.add(c_dwg.text(
+                f"{stars:,}",
+                insert=(compact_width - 38, y),
+                fill=icon_col, font_size=8,
+                font_family=font
+            ))
+
+            # Language
+            lang = repo.get("language") or ""
+            if lang:
+                c_dwg.add(c_dwg.text(
+                    lang[:12],
+                    insert=(12, y + 12),
+                    fill=icon_col, font_size=7,
+                    font_family=font, opacity=0.7
+                ))
+
+            # Separator
+            if i < len(repos) - 1:
+                c_dwg.add(c_dwg.line(
+                    start=(12, y + 18), end=(compact_width - 12, y + 18),
+                    stroke=border_col, stroke_width=0.5, opacity=0.4
+                ))
+
+        return c_dwg.tostring()
+    # ── End Compact Layout ────────────────────────────────────────────────
     
     if not repos:
         # Return empty card with message
@@ -185,12 +276,6 @@ def draw_repo_card(data, theme_name="Default", custom_colors=None, sort_by="star
         
         # Separator line between repos (except for last one)
         if i < len(repos) - 1:
-            dwg.add(dwg.line(
-                start=(20, y + repo_height - 8),
-                end=(width - 20, y + repo_height - 8),
-                stroke=border_color,
-                stroke_width=1,
-                opacity=0.3
-            ))
+            draw_divider_line(dwg, 20, y + repo_height - 8, width - 20, y + repo_height - 8, theme)
     
     return dwg.tostring()

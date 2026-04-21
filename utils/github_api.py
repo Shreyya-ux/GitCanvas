@@ -23,6 +23,39 @@ logger = setup_logger(__name__)
 
 GITHUB_GRAPHQL_URL = "https://api.github.com/graphql"
 
+
+class GitHubDataError(Exception):
+    """Base exception for GitHub data fetch failures."""
+
+    def __init__(self, message: str, error_type: str = "api_error"):
+        super().__init__(message)
+        self.message = message
+        self.error_type = error_type
+
+
+class UserNotFoundError(GitHubDataError):
+    """Raised when the provided GitHub username does not exist."""
+
+    def __init__(self, username: str):
+        super().__init__(
+            f'GitHub user "{username}" was not found.',
+            error_type="user_not_found",
+        )
+
+
+class RateLimitExceededError(GitHubDataError):
+    """Raised when GitHub API rate limits are exceeded."""
+
+    def __init__(self, message: str = "GitHub API rate limit was reached."):
+        super().__init__(message, error_type="rate_limited")
+
+
+class GitHubApiError(GitHubDataError):
+    """Raised for non-rate-limit GitHub API failures."""
+
+    def __init__(self, message: str = "GitHub API is currently unavailable."):
+        super().__init__(message, error_type="api_error")
+
 if load_dotenv:
     load_dotenv()
 
@@ -116,12 +149,18 @@ def fetch_github_graphql(username, token=None):
     if not token:
         return None
 
+    from datetime import datetime, timedelta, timezone as _tz
+    _today = datetime.now(_tz.utc)
+    _from  = (_today - timedelta(days=365)).strftime("%Y-%m-%dT00:00:00Z")
+    _to    = _today.strftime("%Y-%m-%dT23:59:59Z")
+
     query = """
-    query ($login: String!) {
+    query ($login: String!, $from: DateTime!, $to: DateTime!) {
       user(login: $login) {
-        contributionsCollection {
+        contributionsCollection(from: $from, to: $to) {
           totalCommitContributions
           contributionCalendar {
+            totalContributions
             weeks {
               contributionDays {
                 date
@@ -141,7 +180,7 @@ def fetch_github_graphql(username, token=None):
     try:
         resp = requests.post(
             GITHUB_GRAPHQL_URL,
-            json={"query": query, "variables": {"login": username}},
+            json={"query": query, "variables": {"login": username, "from": _from, "to": _to}},
             headers=headers,
             timeout=10
         )
@@ -229,6 +268,10 @@ def parse_graphql_contributions(graphql_json):
 
         total_commits = safe_get_nested_value(
             graphql_json,
+            ["data", "user", "contributionsCollection", "contributionCalendar", "totalContributions"],
+            0
+        ) or safe_get_nested_value(
+            graphql_json,
             ["data", "user", "contributionsCollection", "totalCommitContributions"],
             0
         )
@@ -271,14 +314,50 @@ def get_github_headers(token=None):
 
     return headers
 
+
+def _extract_github_error_message(response) -> str:
+    """Safely extract GitHub API error message from JSON responses."""
+    try:
+        payload = response.json()
+    except ValueError:
+        return ""
+
+    if isinstance(payload, dict):
+        message = payload.get("message")
+        if isinstance(message, str):
+            return message
+    return ""
+
+
+def _build_user_fetch_error(username: str, response) -> GitHubDataError:
+    """Map failed user API responses to typed exceptions."""
+    status_code = response.status_code
+    message = _extract_github_error_message(response)
+
+    if status_code == 404:
+        return UserNotFoundError(username)
+
+    if status_code in (403, 429):
+        remaining = response.headers.get("X-RateLimit-Remaining")
+        if remaining == "0" or "rate limit" in message.lower():
+            return RateLimitExceededError(message or "GitHub API rate limit was reached.")
+
+    return GitHubApiError(message or f"GitHub API returned status code {status_code}.")
+
 @cache_github_api
-def get_live_github_data(username, token=None):
+def get_live_github_data(username, token=None, raise_errors: bool = False):
     """
     Fetches real data from GitHub API with comprehensive validation.
     Notes: 
     - Unauthenticated requests are rate-limited (60/hr).
     - For a real production app, we need a token or use GraphQL.
     - For this MVP, we scrape or use public endpoints where possible to avoid token complexity for the user usage.
+
+    Args:
+        username: GitHub username.
+        token: Optional GitHub token.
+        raise_errors: When True, raise typed GitHubDataError exceptions instead
+            of returning None on fatal failures.
     """
     try:
         # User details
@@ -290,22 +369,30 @@ def get_live_github_data(username, token=None):
             log_api_call(logger, user_url, user_resp.status_code, has_token=bool(token))
         except requests.RequestException as e:
             logger.error(f"Failed to fetch user data: {e}")
+            if raise_errors:
+                raise GitHubApiError("Failed to connect to GitHub API.") from e
             return None
 
         if user_resp.status_code != 200:
             logger.error(f"User API Error: Status {user_resp.status_code}")
+            if raise_errors:
+                raise _build_user_fetch_error(username, user_resp)
             return None
         
         try:
             raw_user_data = user_resp.json()
         except ValueError as e:
             logger.error(f"Invalid JSON in user response: {e}")
+            if raise_errors:
+                raise GitHubApiError("GitHub returned an invalid response payload.") from e
             return None
         
         # Validate user data
         validated_user = validate_github_user_response(raw_user_data)
         if not validated_user:
             logger.error("User data validation failed")
+            if raise_errors:
+                raise GitHubApiError("GitHub user response failed validation.")
             return None
         
         logger.info(f"User data fetched successfully for {username}")
@@ -453,19 +540,15 @@ def get_live_github_data(username, token=None):
 
         return data
 
-    except requests.exceptions.Timeout as e:
-        logger.error(f"GitHub API timeout while fetching {username}: {e}")
-        return None
-    except requests.exceptions.ConnectionError as e:
-        logger.error(f"GitHub API connection error: {e}")
-        return None
-    except ValueError as e:
-        logger.error(f"Invalid JSON response from GitHub API: {e}")
-        return None
+            
+    except GitHubDataError:
+        raise
     except Exception as e:
         import traceback
         logger.error(f"Unexpected error in get_live_github_data for {username}: {e}")
         logger.debug(f"Traceback: {traceback.format_exc()}")
+        if raise_errors:
+            raise GitHubApiError("Unexpected error while fetching GitHub data.") from e
         return None
 
 def get_mock_data(username):

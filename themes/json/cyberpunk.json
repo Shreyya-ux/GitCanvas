@@ -1,10 +1,16 @@
 {
-  "bg_color": "#0a0a0f",
-  "title_color": "#00ff41",
-  "text_color": "#00ffff",
-  "border_color": "#ff00ff",
-  "icon_color": "#ff0080",
-  "title_font_size": "18px",
-  "text_font_size": "14px",
-  "font_family": "monospace"
+    "bg_color": "#0a0a0f",
+    "title_color": "#00ff41",
+    "text_color": "#00ffff",
+    "border_color": "#ff00ff",
+    "icon_color": "#ff0080",
+    "title_font_size": "18px",
+    "text_font_size": "14px",
+    "font_family": "monospace",
+    "tags": [
+        "dark",
+        "neon",
+        "colorful",
+        "tech"
+    ]
 }

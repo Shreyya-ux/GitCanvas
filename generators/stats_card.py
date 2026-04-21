@@ -2,7 +2,7 @@ import math
 import random
 import svgwrite
 from themes.styles import THEMES
-from .svg_base import create_svg_base, CSS_ANIMATIONS
+from .svg_base import create_svg_base, CSS_ANIMATIONS, draw_card_background, draw_divider_line, draw_section_title
 
 # JavaScript for number counting animation
 COUNTING_SCRIPT = """
@@ -42,7 +42,7 @@ COUNTING_SCRIPT = """
 </script>
 """
 
-def draw_stats_card(data, theme_name="Default", show_options=None, custom_colors=None, animations_enabled=True):
+def draw_stats_card(data, theme_name="Default", show_options=None, custom_colors=None, animations_enabled=True, compact=False):
     """
     Generates the Main Stats Card SVG.
     data: dict with user stats
@@ -104,8 +104,7 @@ def draw_stats_card(data, theme_name="Default", show_options=None, custom_colors
     }
     
     # Background (no animation)
-    dwg.add(dwg.rect(insert=(0, 0), size=("100%", "100%"), rx=10, ry=10, 
-                     fill=theme["bg_color"], stroke=theme["border_color"], stroke_width=2))
+    draw_card_background(dwg, width, height, theme)
     if theme_name == "Stranger_things":
         # Floating particles in background
         random.seed(42)
@@ -295,9 +294,79 @@ def draw_stats_card(data, theme_name="Default", show_options=None, custom_colors
         
         return dwg.tostring()
     
+        # ── Compact Layout (Issue #164) ──────────────────────────────────────
+    if compact:
+        compact_width = 300
+        compact_height = 120
+        username = data.get("username", "user")
+
+        c_dwg = svgwrite.Drawing(size=(compact_width, compact_height))
+        c_dwg.viewbox(0, 0, compact_width, compact_height)
+
+        bg_col     = theme.get("bg_color",     "#0d1117")
+        border_col = theme.get("border_color", "#30363d")
+        title_col  = theme.get("title_color",  "#58a6ff")
+        text_col   = theme.get("text_color",   "#c9d1d9")
+        icon_col   = theme.get("icon_color",   "#8b949e")
+        font       = theme.get("font_family",  "Segoe UI, Ubuntu, Sans-Serif")
+
+        # Background + border
+        c_dwg.add(c_dwg.rect(
+            insert=(0, 0), size=(compact_width, compact_height),
+            rx=10, ry=10,
+            fill=bg_col, stroke=border_col, stroke_width=1.5
+        ))
+
+        # Title
+        c_dwg.add(c_dwg.text(
+            f"{username}'s Stats",
+            insert=(12, 22),
+            fill=title_col, font_size=11,
+            font_family=font, font_weight="bold"
+        ))
+
+        # Divider
+        c_dwg.add(c_dwg.line(
+            start=(12, 28), end=(compact_width - 12, 28),
+            stroke=border_col, stroke_width=0.8
+        ))
+
+        # Stats in 2x2 grid
+        stats_map = [
+            ("stars",     "⭐ Stars",   data.get("total_stars",   0)),
+            ("commits",   "🔨 Commits", data.get("total_commits", 0)),
+            ("repos",     "📦 Repos",   data.get("public_repos",  0)),
+            ("followers", "👥 Follows", data.get("followers",     0)),
+        ]
+
+        visible = [(k, l, v) for k, l, v in stats_map if show_options.get(k, True)]
+
+        col_w  = compact_width // 2
+        row_h  = 36
+        start_y = 42
+
+        for i, (key, label, value) in enumerate(visible[:4]):
+            col = i % 2
+            row = i // 2
+            x = col * col_w + 12
+            y = start_y + row * row_h
+
+            c_dwg.add(c_dwg.text(
+                label, insert=(x, y),
+                fill=icon_col, font_size=8,
+                font_family=font
+            ))
+            c_dwg.add(c_dwg.text(
+                str(value), insert=(x, y + 16),
+                fill=text_col, font_size=13,
+                font_family=font, font_weight="bold"
+            ))
+
+        return c_dwg.tostring()
+    # ── End Compact Layout ────────────────────────────────────────────────
     
     # Title
-    font_family = theme["font_family"]
+    font_family = theme.get("font_family", "Segoe UI, Ubuntu, Sans-Serif")
     title_params = {
         "insert": (20, 35),
         "fill": theme["title_color"],

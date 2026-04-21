@@ -6,5 +6,11 @@
     "icon_color": "#ff6a00",
     "font_family": "Segoe UI, Ubuntu, Sans-Serif",
     "title_font_size": 20,
-    "text_font_size": 14
+    "text_font_size": 14,
+    "tags": [
+        "dark",
+        "red",
+        "colorful",
+        "neon"
+    ]
 }
