@@ -23,6 +23,39 @@ logger = setup_logger(__name__)
 
 GITHUB_GRAPHQL_URL = "https://api.github.com/graphql"
 
+
+class GitHubDataError(Exception):
+    """Base exception for GitHub data fetch failures."""
+
+    def __init__(self, message: str, error_type: str = "api_error"):
+        super().__init__(message)
+        self.message = message
+        self.error_type = error_type
+
+
+class UserNotFoundError(GitHubDataError):
+    """Raised when the provided GitHub username does not exist."""
+
+    def __init__(self, username: str):
+        super().__init__(
+            f'GitHub user "{username}" was not found.',
+            error_type="user_not_found",
+        )
+
+
+class RateLimitExceededError(GitHubDataError):
+    """Raised when GitHub API rate limits are exceeded."""
+
+    def __init__(self, message: str = "GitHub API rate limit was reached."):
+        super().__init__(message, error_type="rate_limited")
+
+
+class GitHubApiError(GitHubDataError):
+    """Raised for non-rate-limit GitHub API failures."""
+
+    def __init__(self, message: str = "GitHub API is currently unavailable."):
+        super().__init__(message, error_type="api_error")
+
 if load_dotenv:
     load_dotenv()
 
@@ -107,7 +140,12 @@ def calculate_streak_data(contributions):
 @cache_github_api
 def fetch_github_graphql(username, token=None):
     if not token:
-        token = token or st.secrets.get("GITHUB_TOKEN") or os.getenv("GITHUB_TOKEN")
+        try:
+            token = st.secrets.get("GITHUB_TOKEN")
+        except Exception:
+            token = None
+        if not token:
+            token = os.getenv("GITHUB_TOKEN")
     if not token:
         return None
 
@@ -160,11 +198,21 @@ def fetch_github_graphql(username, token=None):
             
         return validated_data
     
-    except requests.RequestException as e:
+    except requests.exceptions.Timeout as e:
+        logger.error(f"GraphQL request timeout: {e}")
+        return None
+    except requests.exceptions.ConnectionError as e:
+        logger.error(f"GraphQL connection error: {e}")
+        return None
+    except requests.exceptions.RequestException as e:
         logger.error(f"GraphQL request failed: {e}")
+        return None
+    except ValueError as e:
+        logger.error(f"Invalid JSON in GraphQL response: {e}")
         return None
     except Exception as e:
         logger.error(f"Unexpected error in GraphQL fetch: {e}")
+        logger.debug(f"Traceback: {traceback.format_exc()}")
         return None
 
 def parse_graphql_contributions(graphql_json):
@@ -236,8 +284,12 @@ def parse_graphql_contributions(graphql_json):
 
         return contributions, total_commits, contribution_weeks
     
+    except (KeyError, TypeError, ValueError) as e:
+        logger.error(f"Invalid data structure in GraphQL contributions: {e}")
+        return [], 0, []
     except Exception as e:
-        logger.error(f"Error parsing GraphQL contributions: {e}")
+        logger.error(f"Unexpected error parsing GraphQL contributions: {e}")
+        logger.debug(f"Traceback: {traceback.format_exc()}")
         return [], 0, []
 
 
@@ -251,20 +303,61 @@ def get_github_headers(token=None):
     }
 
     if not token:
-        token = token or st.secrets.get("GITHUB_TOKEN") or os.getenv("GITHUB_TOKEN")
+        try:
+            token = st.secrets.get("GITHUB_TOKEN")
+        except Exception:
+            token = None
+        if not token:
+            token = os.getenv("GITHUB_TOKEN")
     if token:
         headers["Authorization"] = f"Bearer {token}"
 
     return headers
 
+
+def _extract_github_error_message(response) -> str:
+    """Safely extract GitHub API error message from JSON responses."""
+    try:
+        payload = response.json()
+    except ValueError:
+        return ""
+
+    if isinstance(payload, dict):
+        message = payload.get("message")
+        if isinstance(message, str):
+            return message
+    return ""
+
+
+def _build_user_fetch_error(username: str, response) -> GitHubDataError:
+    """Map failed user API responses to typed exceptions."""
+    status_code = response.status_code
+    message = _extract_github_error_message(response)
+
+    if status_code == 404:
+        return UserNotFoundError(username)
+
+    if status_code in (403, 429):
+        remaining = response.headers.get("X-RateLimit-Remaining")
+        if remaining == "0" or "rate limit" in message.lower():
+            return RateLimitExceededError(message or "GitHub API rate limit was reached.")
+
+    return GitHubApiError(message or f"GitHub API returned status code {status_code}.")
+
 @cache_github_api
-def get_live_github_data(username, token=None):
+def get_live_github_data(username, token=None, raise_errors: bool = False):
     """
     Fetches real data from GitHub API with comprehensive validation.
     Notes: 
     - Unauthenticated requests are rate-limited (60/hr).
     - For a real production app, we need a token or use GraphQL.
     - For this MVP, we scrape or use public endpoints where possible to avoid token complexity for the user usage.
+
+    Args:
+        username: GitHub username.
+        token: Optional GitHub token.
+        raise_errors: When True, raise typed GitHubDataError exceptions instead
+            of returning None on fatal failures.
     """
     try:
         # User details
@@ -276,22 +369,30 @@ def get_live_github_data(username, token=None):
             log_api_call(logger, user_url, user_resp.status_code, has_token=bool(token))
         except requests.RequestException as e:
             logger.error(f"Failed to fetch user data: {e}")
+            if raise_errors:
+                raise GitHubApiError("Failed to connect to GitHub API.") from e
             return None
 
         if user_resp.status_code != 200:
             logger.error(f"User API Error: Status {user_resp.status_code}")
+            if raise_errors:
+                raise _build_user_fetch_error(username, user_resp)
             return None
         
         try:
             raw_user_data = user_resp.json()
         except ValueError as e:
             logger.error(f"Invalid JSON in user response: {e}")
+            if raise_errors:
+                raise GitHubApiError("GitHub returned an invalid response payload.") from e
             return None
         
         # Validate user data
         validated_user = validate_github_user_response(raw_user_data)
         if not validated_user:
             logger.error("User data validation failed")
+            if raise_errors:
+                raise GitHubApiError("GitHub user response failed validation.")
             return None
         
         logger.info(f"User data fetched successfully for {username}")
@@ -440,10 +541,14 @@ def get_live_github_data(username, token=None):
         return data
 
             
+    except GitHubDataError:
+        raise
     except Exception as e:
         import traceback
-        logger.error(f"Error in get_live_github_data: {e}")
+        logger.error(f"Unexpected error in get_live_github_data for {username}: {e}")
         logger.debug(f"Traceback: {traceback.format_exc()}")
+        if raise_errors:
+            raise GitHubApiError("Unexpected error while fetching GitHub data.") from e
         return None
 
 def get_mock_data(username):
@@ -586,3 +691,206 @@ def fetch_sparkline_data(username, token=None):
     
     # Return as a list of counts from oldest to newest
     return [daily_commits[date] for date in reversed(dates)]
+
+
+@cache_github_api
+def get_github_actions_data(username, token=None):
+    """
+    Fetches GitHub Actions statistics for a user.
+    
+    Requires authentication token - Actions data is not available publicly.
+    
+    Args:
+        username: GitHub username
+        token: GitHub API token (required for Actions data)
+    
+    Returns:
+        Dict with actions statistics or None if no data available
+    """
+    if not token:
+        # Try to get token from streamlit secrets or environment
+        try:
+            token = st.secrets.get("GITHUB_TOKEN")
+        except Exception:
+            # Secrets file not found or not accessible
+            token = None
+        
+        if not token:
+            token = os.getenv("GITHUB_TOKEN")
+    
+    if not token:
+        logger.warning(f"GitHub token required to fetch Actions data for {username}")
+        return None
+    
+    try:
+        # Get user's repositories
+        repos_url = f"https://api.github.com/users/{username}/repos?per_page=100"
+        headers = get_github_headers(token)
+        
+        repos_resp = requests.get(repos_url, headers=headers, timeout=10)
+        if repos_resp.status_code != 200:
+            logger.error(f"Failed to fetch repos for Actions data: {repos_resp.status_code}")
+            return None
+        
+        repos = repos_resp.json()
+        if not isinstance(repos, list):
+            logger.error("Invalid repos response format")
+            return None
+        
+        # Collect actions data from repos
+        total_workflows = 0
+        total_runs = 0
+        successful_runs = 0
+        failed_runs = 0
+        recent_runs = []
+        workflows_by_repo = []
+        
+        for repo in repos:
+            repo_name = repo.get('name', '')
+            if not repo_name:
+                continue
+            
+            try:
+                # Fetch workflows for this repo
+                workflows_url = f"https://api.github.com/repos/{username}/{repo_name}/actions/workflows"
+                workflows_resp = requests.get(workflows_url, headers=headers, timeout=10)
+                
+                if workflows_resp.status_code == 200:
+                    workflows = workflows_resp.json().get('workflows', [])
+                    total_workflows += len(workflows)
+                    
+                    for workflow in workflows:
+                        workflow_id = workflow.get('id')
+                        workflow_name = workflow.get('name', 'Unknown')
+                        
+                        if workflow_id:
+                            try:
+                                # Fetch runs for this workflow
+                                runs_url = f"https://api.github.com/repos/{username}/{repo_name}/actions/workflows/{workflow_id}/runs?per_page=10"
+                                runs_resp = requests.get(runs_url, headers=headers, timeout=10)
+                                
+                                if runs_resp.status_code == 200:
+                                    runs_data = runs_resp.json().get('workflow_runs', [])
+                                    total_runs += len(runs_data)
+                                    
+                                    for run in runs_data:
+                                        status = run.get('conclusion', '')
+                                        if status == 'success':
+                                            successful_runs += 1
+                                        elif status == 'failure':
+                                            failed_runs += 1
+                                        
+                                        # Collect recent runs
+                                        recent_runs.append({
+                                            'repo': repo_name,
+                                            'workflow': workflow_name,
+                                            'status': status,
+                                            'created_at': run.get('created_at', ''),
+                                            'updated_at': run.get('updated_at', ''),
+                                            'conclusion': run.get('conclusion', 'unknown')
+                                        })
+                            except (requests.RequestException, (KeyError, ValueError)):
+                                logger.warning(f"Failed to fetch runs for {repo_name}/{workflow_name}")
+                else:
+                    logger.debug(f"No workflows found for {repo_name}")
+                    
+            except (requests.RequestException, (KeyError, ValueError)):
+                logger.warning(f"Failed to fetch workflows for {repo_name}")
+        
+        # Sort recent runs by updated_at (most recent first)
+        try:
+            from datetime import datetime
+            recent_runs.sort(
+                key=lambda x: datetime.fromisoformat(x.get('updated_at', '2000-01-01').replace('Z', '+00:00')),
+                reverse=True
+            )
+        except (ValueError, TypeError):
+            logger.warning(f"Failed to sort recent runs - invalid date format")
+        
+        # Keep only last 20 recent runs
+        recent_runs = recent_runs[:20]
+        
+        # Calculate success rate
+        success_rate = 0
+        if total_runs > 0:
+            success_rate = round((successful_runs / total_runs) * 100, 1)
+        
+        return {
+            'total_workflows': total_workflows,
+            'total_runs': total_runs,
+            'successful_runs': successful_runs,
+            'failed_runs': failed_runs,
+            'success_rate': success_rate,
+            'recent_runs': recent_runs,
+            'data_source': 'github_actions_api'
+        }
+        
+    except requests.exceptions.Timeout:
+        logger.error(f"GitHub Actions API timeout for {username}")
+        return None
+    except requests.exceptions.ConnectionError:
+        logger.error(f"GitHub Actions API connection error for {username}")
+        return None
+    except ValueError as e:
+        logger.error(f"Invalid JSON response from GitHub Actions API: {e}")
+        return None
+    except Exception as e:
+        import traceback
+        logger.error(f"Unexpected error fetching GitHub Actions data for {username}: {e}")
+        logger.debug(f"Traceback: {traceback.format_exc()}")
+        return None
+
+
+def get_mock_actions_data(username):
+    """Returns mock GitHub Actions data for testing."""
+    return {
+        'total_workflows': 5,
+        'total_runs': 47,
+        'successful_runs': 43,
+        'failed_runs': 4,
+        'success_rate': 91.5,
+        'recent_runs': [
+            {
+                'repo': 'awesome-project',
+                'workflow': 'Tests',
+                'status': 'completed',
+                'created_at': '2025-01-20T14:30:00Z',
+                'updated_at': '2025-01-20T14:45:00Z',
+                'conclusion': 'success'
+            },
+            {
+                'repo': 'web-app',
+                'workflow': 'Build & Deploy',
+                'status': 'completed',
+                'created_at': '2025-01-20T13:00:00Z',
+                'updated_at': '2025-01-20T13:20:00Z',
+                'conclusion': 'success'
+            },
+            {
+                'repo': 'api-service',
+                'workflow': 'Linting',
+                'status': 'completed',
+                'created_at': '2025-01-19T10:15:00Z',
+                'updated_at': '2025-01-19T10:18:00Z',
+                'conclusion': 'failure'
+            },
+            {
+                'repo': 'awesome-project',
+                'workflow': 'Tests',
+                'status': 'completed',
+                'created_at': '2025-01-19T08:00:00Z',
+                'updated_at': '2025-01-19T08:15:00Z',
+                'conclusion': 'success'
+            },
+            {
+                'repo': 'mobile-app',
+                'workflow': 'Build',
+                'status': 'completed',
+                'created_at': '2025-01-18T16:45:00Z',
+                'updated_at': '2025-01-18T17:00:00Z',
+                'conclusion': 'success'
+            },
+        ],
+        'username': username,
+        'data_source': 'mock'
+    }

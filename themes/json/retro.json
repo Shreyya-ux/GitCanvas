@@ -6,6 +6,10 @@
     "icon_color": "#a08060",
     "font_family": "'Courier New', Courier, monospace",
     "title_font_size": 18,
-    "text_font_size": 14
+    "text_font_size": 14,
+    "tags": [
+        "light",
+        "retro",
+        "colorful"
+    ]
 }
-

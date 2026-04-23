@@ -1,8 +1,10 @@
 import streamlit as st  # type: ignore
+import streamlit.components.v1 as components
 import base64
 import os
 import re
 import json
+import requests
 
 # HEX color regex validation pattern
 HEX_COLOR_REGEX = re.compile(r'^#[0-9A-Fa-f]{6}$')
@@ -10,7 +12,7 @@ from dotenv import load_dotenv
 from config.settings import get_settings
 from roast_widget_streamlit import render_roast_widget
 from ai.description_generator import generate_github_description
-from generators import stats_card, lang_card, contrib_card, badge_generator, recent_activity_card, streak_card, repo_card, social_card, trophy_card, sparkline
+from generators import stats_card, lang_card, contrib_card, badge_generator, recent_activity_card, streak_card, repo_card, social_card, trophy_card, sparkline, actions_card
 from utils import github_api
 try:
     from utils.github_utils import get_rate_limit_status as fetch_rate_limit_status
@@ -345,6 +347,18 @@ def load_data(user, token=None, use_mock=False, _cache_version="v3"):  # bump wh
             return None
     return d
 
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def load_actions_data(user, token=None, use_mock=False, _cache_version="v1"):
+    d = github_api.get_github_actions_data(user, token)
+    if not d:
+        if use_mock:
+            st.warning("Actions API limits/errors reached. Using mock data (Dev/Test mode).")
+            d = github_api.get_mock_actions_data(user)
+        else:
+            return None
+    return d
+
 data = load_data(username if username else "torvalds", effective_github_token or None, use_mock_data)
 
 # Show token warning only if no token is available from ANY source (env, secrets, sidebar)
@@ -402,11 +416,12 @@ elif font_override:
     custom_colors = {"font_family": font_override}
 
 
-tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11, tab12, tab13 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11, tab12, tab13, tab14 = st.tabs([
     "Main Stats", "Languages", "Top Repositories", "Contributions",
     "🔥 GitHub Streak", "🔗 Social Links", "Icons & Badges",
-    "🔥 AI Roast", "Recent Activity", "✨ Visual Elements",
-    "🏆 Trophy", "🎨 Theme Gallery", "📅 Calendar Heatmap"
+    "🔥 AI Roast & Summary", "Recent Activity", "✨ Visual Elements",
+    "🏆 Trophy", "🎨 Theme Gallery", "📅 Calendar Heatmap",
+    "⚙️ GitHub Actions"
 ])
 
 def show_code_area(code_content, label="Markdown Code"):
@@ -415,14 +430,8 @@ def show_code_area(code_content, label="Markdown Code"):
 
 
 def render_embedded_html(html_content: str, *, height: int) -> None:
-    """Render inline HTML via iframe to avoid deprecated st.components.v1.html."""
-    html_b64 = base64.b64encode(html_content.encode("utf-8")).decode("ascii")
-    iframe_src = f"data:text/html;base64,{html_b64}"
-    try:
-        st.iframe(iframe_src, height=height)
-    except TypeError:
-        # Compatibility fallback for Streamlit builds where iframe internals changed.
-        st.components.v1.html(html_content, height=height, scrolling=False)
+    """Render inline HTML using Streamlit's components API."""
+    components.html(html_content, height=height, scrolling=False)
 
 def render_tab(svg_bytes, endpoint, username, selected_theme, custom_colors, hide_params=None, code_template=None, excluded_languages=None, output_format="Markdown", font_override=None, extra_params=None):
     col1, col2 = st.columns([1.5, 1])
@@ -667,55 +676,6 @@ with tab1:
         _code_label = "HTML Code" if output_format == "HTML" else "Markdown Code"
         show_code_area(_spark_code, label=_code_label)
 
-    st.markdown("---")
-    st.subheader("🧠 AI Description")
-    st.caption("Generate a short, theme-aware summary of this GitHub profile.")
-
-    tone_col, button_col = st.columns([1.2, 1])
-    with tone_col:
-        description_tone = st.selectbox(
-            "Tone",
-            ["professional", "funny", "creative"],
-            index=0,
-            key="ai_description_tone",
-        )
-
-    with button_col:
-        if st.button("Generate AI Description", type="primary", use_container_width=True, key="generate_ai_description"):
-            with st.spinner("Generating AI description..."):
-                result = generate_github_description(data, selected_theme, tone=description_tone)
-                st.session_state["ai_description_result"] = {
-                    **result,
-                    "username": username,
-                    "theme": selected_theme,
-                    "tone": description_tone,
-                }
-
-    current_description = st.session_state.get("ai_description_result")
-    if (
-        current_description
-        and current_description.get("username") == username
-        and current_description.get("theme") == selected_theme
-        and current_description.get("tone") == description_tone
-    ):
-        description_text = current_description.get("description", "")
-        st.markdown("**Generated Description**")
-        st.write(description_text)
-
-        source = current_description.get("source", "fallback")
-        st.caption(f"Source: {source} • Tone: {description_tone} • Theme: {selected_theme}")
-
-        st.download_button(
-            label="💾 Save Description",
-            data=description_text,
-            file_name=f"{username}_{selected_theme}_description.txt",
-            mime="text/plain",
-            use_container_width=False,
-            key="save_ai_description",
-        )
-    else:
-        st.info("Click **Generate AI Description** to create a summary for the current theme.")
-
 
 with tab2:
     st.subheader("Top Languages")
@@ -859,8 +819,12 @@ with tab6:
                 )
                 b64 = base64.b64encode(svg_bytes.encode('utf-8')).decode("utf-8")
                 st.markdown(f'<img src="data:image/svg+xml;base64,{b64}" style="max-width: 100%; box-shadow: 0 4px 6px rgba(0,0,0,0.3); border-radius: 10px;"/>', unsafe_allow_html=True)
+            except requests.RequestException as e:
+                st.error(f"Network error rendering social card: {type(e).__name__}. Check your internet connection.")
+            except (KeyError, ValueError, TypeError) as e:
+                st.error(f"Invalid data while rendering social card: {type(e).__name__}. The API may have returned unexpected data.")
             except Exception as e:
-                st.error(f"Error rendering social card: {e}")
+                st.error(f"Unexpected error rendering social card: {type(e).__name__}. Please try again.")
         
         with col2:
             st.markdown("#### Markdown Code")
@@ -931,7 +895,7 @@ with tab7:
             st.markdown("---")
             show_code_area(md_output, label="Badge Code")
 
-# AI ROAST TAB
+# AI ROAST & SUMMARY TAB
 with tab8:
     st.subheader("🔥 AI Profile Roast")
 
@@ -947,6 +911,55 @@ with tab8:
         render_roast_widget(username, profile_data=data)
     else:
         st.warning("Please enter a GitHub username in the sidebar.")
+    
+    st.markdown("---")
+    st.subheader("🧠 AI Description Summary")
+    st.caption("Generate a short, theme-aware summary of this GitHub profile.")
+
+    tone_col, button_col = st.columns([1.2, 1])
+    with tone_col:
+        description_tone = st.selectbox(
+            "Tone",
+            ["professional", "funny", "creative"],
+            index=0,
+            key="ai_description_tone",
+        )
+
+    with button_col:
+        if st.button("Generate AI Description", type="primary", use_container_width=True, key="generate_ai_description"):
+            with st.spinner("Generating AI description..."):
+                result = generate_github_description(data, selected_theme, tone=description_tone)
+                st.session_state["ai_description_result"] = {
+                    **result,
+                    "username": username,
+                    "theme": selected_theme,
+                    "tone": description_tone,
+                }
+
+    current_description = st.session_state.get("ai_description_result")
+    if (
+        current_description
+        and current_description.get("username") == username
+        and current_description.get("theme") == selected_theme
+        and current_description.get("tone") == description_tone
+    ):
+        description_text = current_description.get("description", "")
+        st.markdown("**Generated Description**")
+        st.write(description_text)
+
+        source = current_description.get("source", "fallback")
+        st.caption(f"Source: {source} • Tone: {description_tone} • Theme: {selected_theme}")
+
+        st.download_button(
+            label="💾 Save Description",
+            data=description_text,
+            file_name=f"{username}_{selected_theme}_description.txt",
+            mime="text/plain",
+            use_container_width=False,
+            key="save_ai_description",
+        )
+    else:
+        st.info("Click **Generate AI Description** to create a summary for the current theme.")
 
 with tab9:
     st.subheader("Recent Activity")
@@ -960,9 +973,15 @@ with tab9:
             svg_bytes = recent_activity_card.draw_recent_activity_card(
                 {"username": username}, selected_theme, custom_colors, token=effective_github_token
             )
+        except requests.RequestException as e:
+            st.error(f"Network error fetching recent activity: {type(e).__name__}. Check your connection and try again.")
+            svg_bytes = recent_activity_card._render_svg_lines(["Network Error", "Unable to fetch data"], THEMES.get(selected_theme, THEMES['Default']))
+        except (KeyError, ValueError, TypeError) as e:
+            st.error(f"Invalid data format from GitHub API: {type(e).__name__}. Please try again.")
+            svg_bytes = recent_activity_card._render_svg_lines(["Data Format Error", "Unable to parse response"], THEMES.get(selected_theme, THEMES['Default']))
         except Exception as e:
-            st.error(f"Error rendering recent activity: {e}")
-            svg_bytes = recent_activity_card._render_svg_lines([f"Error: {e}"], THEMES.get(selected_theme, THEMES['Default']))
+            st.error(f"Unexpected error rendering recent activity: {type(e).__name__}. Please try again.")
+            svg_bytes = recent_activity_card._render_svg_lines(["Rendering Error", "Please try again"], THEMES.get(selected_theme, THEMES['Default']))
 
         b64 = base64.b64encode(svg_bytes.encode('utf-8')).decode("utf-8")
         st.markdown(f'<img src="data:image/svg+xml;base64,{b64}" style="max-width: 100%; box-shadow: 0 4px 6px rgba(0,0,0,0.3); border-radius: 10px;"/>', unsafe_allow_html=True)
@@ -1124,3 +1143,37 @@ with tab13:
             "end_date": heatmap_date_range["end"],
         },
     )
+
+with tab14:
+    st.subheader("⚙️ GitHub Actions")
+    st.caption("Workflow run totals, success rate, and recent runs from GitHub Actions.")
+
+    if not effective_github_token:
+        st.warning(
+            "A GitHub token is required for live Actions data. Enable mock data for a local preview, or add a token in the sidebar."
+        )
+
+    actions_data = load_actions_data(username if username else "torvalds", effective_github_token or None, use_mock_data)
+
+    if actions_data:
+        col1, col2 = st.columns([1.5, 1])
+
+        with col1:
+            svg_bytes = actions_card.draw_actions_card(actions_data, selected_theme, custom_colors, animations_enabled=animations_enabled)
+            b64 = base64.b64encode(svg_bytes.encode("utf-8")).decode("utf-8")
+            st.markdown(
+                f'<img src="data:image/svg+xml;base64,{b64}" style="max-width: 100%; box-shadow: 0 4px 6px rgba(0,0,0,0.3); border-radius: 10px;"/>',
+                unsafe_allow_html=True,
+            )
+
+        with col2:
+            st.subheader("API Usage")
+            st.caption("This endpoint requires an Authorization header, so it cannot be embedded as a normal public README image URL.")
+            example_url = f"https://gitcanvas-api.vercel.app/api/actions?username={username}&theme={selected_theme}"
+            curl_example = (
+                "curl -H \"Authorization: Bearer YOUR_GITHUB_TOKEN\" "
+                f'"{example_url}"'
+            )
+            show_code_area(curl_example, label="Curl Example")
+    else:
+        st.warning("No GitHub Actions data could be loaded for this account.")

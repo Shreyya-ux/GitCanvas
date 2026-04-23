@@ -7,5 +7,11 @@
     "font_family": "'Courier New', Courier, monospace",
     "title_font_size": 18,
     "text_font_size": 14,
-    "is_pixel": true
+    "is_pixel": true,
+    "tags": [
+        "dark",
+        "neon",
+        "gaming",
+        "colorful"
+    ]
 }
