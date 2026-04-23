@@ -1,0 +1,10 @@
+AURORA_GRADIENT = {
+    "bg_color": "#0a0f2c",
+    "border_color": "#2e3a59",
+    "title_color": "#7f5af0",
+    "text_color": "#d1d9ff",
+    "icon_color": "#2cb67d",
+    "font_family": "Segoe UI, Ubuntu, sans-serif",
+    "title_font_size": 14,
+    "tags": ["gradient", "modern", "aurora"]
+}
