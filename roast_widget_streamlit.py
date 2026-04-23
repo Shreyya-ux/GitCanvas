@@ -136,8 +136,12 @@ def render_roast_widget(username: str, profile_data: dict[str, Any] | None = Non
                             }
                         else:
                             st.error("Failed to fetch GitHub profile data")
+                    except requests.RequestException as e:
+                        st.error(f"Network error: {type(e).__name__}. Check your connection and try again.")
+                    except (KeyError, ValueError, TypeError) as e:
+                        st.error(f"Invalid profile data received: {type(e).__name__}. The API may have returned unexpected data.")
                     except Exception as e:
-                        st.error(f"Error generating roast: {str(e)}")
+                        st.error(f"Unexpected error generating roast: {type(e).__name__}. Please try again.")
         
         # Display roast if available
         if st.session_state.roast_data:
@@ -156,8 +160,12 @@ def render_roast_widget(username: str, profile_data: dict[str, Any] | None = Non
                             roast_result = generate_profile_roast(profile)
                             st.session_state.roast_data['roast'] = roast_result['roast']
                             st.rerun()
+                        except requests.RequestException as e:
+                            st.error(f"Network error: {type(e).__name__}. Unable to generate new roast.")
+                        except (KeyError, ValueError, TypeError) as e:
+                            st.error(f"Data error: {type(e).__name__}. Unable to generate roast.")
                         except Exception as e:
-                            st.error(f"Error: {str(e)}")
+                            st.error(f"Unexpected error: {type(e).__name__}. Please try again.")
             
             with col2:
                 if st.button("📋 Copy", use_container_width=True):

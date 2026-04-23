@@ -198,11 +198,21 @@ def fetch_github_graphql(username, token=None):
             
         return validated_data
     
-    except requests.RequestException as e:
+    except requests.exceptions.Timeout as e:
+        logger.error(f"GraphQL request timeout: {e}")
+        return None
+    except requests.exceptions.ConnectionError as e:
+        logger.error(f"GraphQL connection error: {e}")
+        return None
+    except requests.exceptions.RequestException as e:
         logger.error(f"GraphQL request failed: {e}")
+        return None
+    except ValueError as e:
+        logger.error(f"Invalid JSON in GraphQL response: {e}")
         return None
     except Exception as e:
         logger.error(f"Unexpected error in GraphQL fetch: {e}")
+        logger.debug(f"Traceback: {traceback.format_exc()}")
         return None
 
 def parse_graphql_contributions(graphql_json):
@@ -274,8 +284,12 @@ def parse_graphql_contributions(graphql_json):
 
         return contributions, total_commits, contribution_weeks
     
+    except (KeyError, TypeError, ValueError) as e:
+        logger.error(f"Invalid data structure in GraphQL contributions: {e}")
+        return [], 0, []
     except Exception as e:
-        logger.error(f"Error parsing GraphQL contributions: {e}")
+        logger.error(f"Unexpected error parsing GraphQL contributions: {e}")
+        logger.debug(f"Traceback: {traceback.format_exc()}")
         return [], 0, []
 
 
@@ -531,7 +545,7 @@ def get_live_github_data(username, token=None, raise_errors: bool = False):
         raise
     except Exception as e:
         import traceback
-        logger.error(f"Error in get_live_github_data: {e}")
+        logger.error(f"Unexpected error in get_live_github_data for {username}: {e}")
         logger.debug(f"Traceback: {traceback.format_exc()}")
         if raise_errors:
             raise GitHubApiError("Unexpected error while fetching GitHub data.") from e
@@ -775,13 +789,13 @@ def get_github_actions_data(username, token=None):
                                             'updated_at': run.get('updated_at', ''),
                                             'conclusion': run.get('conclusion', 'unknown')
                                         })
-                            except requests.RequestException as e:
-                                logger.warning(f"Failed to fetch runs for {repo_name}/{workflow_name}: {e}")
+                            except (requests.RequestException, (KeyError, ValueError)):
+                                logger.warning(f"Failed to fetch runs for {repo_name}/{workflow_name}")
                 else:
                     logger.debug(f"No workflows found for {repo_name}")
                     
-            except requests.RequestException as e:
-                logger.warning(f"Failed to fetch workflows for {repo_name}: {e}")
+            except (requests.RequestException, (KeyError, ValueError)):
+                logger.warning(f"Failed to fetch workflows for {repo_name}")
         
         # Sort recent runs by updated_at (most recent first)
         try:
@@ -790,8 +804,8 @@ def get_github_actions_data(username, token=None):
                 key=lambda x: datetime.fromisoformat(x.get('updated_at', '2000-01-01').replace('Z', '+00:00')),
                 reverse=True
             )
-        except Exception as e:
-            logger.warning(f"Failed to sort recent runs: {e}")
+        except (ValueError, TypeError):
+            logger.warning(f"Failed to sort recent runs - invalid date format")
         
         # Keep only last 20 recent runs
         recent_runs = recent_runs[:20]
@@ -811,9 +825,18 @@ def get_github_actions_data(username, token=None):
             'data_source': 'github_actions_api'
         }
         
+    except requests.exceptions.Timeout:
+        logger.error(f"GitHub Actions API timeout for {username}")
+        return None
+    except requests.exceptions.ConnectionError:
+        logger.error(f"GitHub Actions API connection error for {username}")
+        return None
+    except ValueError as e:
+        logger.error(f"Invalid JSON response from GitHub Actions API: {e}")
+        return None
     except Exception as e:
         import traceback
-        logger.error(f"Error fetching GitHub Actions data: {e}")
+        logger.error(f"Unexpected error fetching GitHub Actions data for {username}: {e}")
         logger.debug(f"Traceback: {traceback.format_exc()}")
         return None
 

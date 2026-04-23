@@ -817,8 +817,12 @@ with tab6:
                 )
                 b64 = base64.b64encode(svg_bytes.encode('utf-8')).decode("utf-8")
                 st.markdown(f'<img src="data:image/svg+xml;base64,{b64}" style="max-width: 100%; box-shadow: 0 4px 6px rgba(0,0,0,0.3); border-radius: 10px;"/>', unsafe_allow_html=True)
+            except requests.RequestException as e:
+                st.error(f"Network error rendering social card: {type(e).__name__}. Check your internet connection.")
+            except (KeyError, ValueError, TypeError) as e:
+                st.error(f"Invalid data while rendering social card: {type(e).__name__}. The API may have returned unexpected data.")
             except Exception as e:
-                st.error(f"Error rendering social card: {e}")
+                st.error(f"Unexpected error rendering social card: {type(e).__name__}. Please try again.")
         
         with col2:
             st.markdown("#### Markdown Code")
@@ -918,9 +922,15 @@ with tab9:
             svg_bytes = recent_activity_card.draw_recent_activity_card(
                 {"username": username}, selected_theme, custom_colors, token=effective_github_token
             )
+        except requests.RequestException as e:
+            st.error(f"Network error fetching recent activity: {type(e).__name__}. Check your connection and try again.")
+            svg_bytes = recent_activity_card._render_svg_lines(["Network Error", "Unable to fetch data"], THEMES.get(selected_theme, THEMES['Default']))
+        except (KeyError, ValueError, TypeError) as e:
+            st.error(f"Invalid data format from GitHub API: {type(e).__name__}. Please try again.")
+            svg_bytes = recent_activity_card._render_svg_lines(["Data Format Error", "Unable to parse response"], THEMES.get(selected_theme, THEMES['Default']))
         except Exception as e:
-            st.error(f"Error rendering recent activity: {e}")
-            svg_bytes = recent_activity_card._render_svg_lines([f"Error: {e}"], THEMES.get(selected_theme, THEMES['Default']))
+            st.error(f"Unexpected error rendering recent activity: {type(e).__name__}. Please try again.")
+            svg_bytes = recent_activity_card._render_svg_lines(["Rendering Error", "Please try again"], THEMES.get(selected_theme, THEMES['Default']))
 
         b64 = base64.b64encode(svg_bytes.encode('utf-8')).decode("utf-8")
         st.markdown(f'<img src="data:image/svg+xml;base64,{b64}" style="max-width: 100%; box-shadow: 0 4px 6px rgba(0,0,0,0.3); border-radius: 10px;"/>', unsafe_allow_html=True)
